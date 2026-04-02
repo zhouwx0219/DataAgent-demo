@@ -1,0 +1,3 @@
+/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/DataAgent_demo.dir
+/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/rebuild_cache.dir
