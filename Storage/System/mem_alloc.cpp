@@ -3,7 +3,7 @@
 #include "global.h"
 namespace storage
 {
-	// Assume the data is strided across the L2 slices, stride granularity
+	// Assume the data.txt is strided across the L2 slices, stride granularity
 	// is the size of a page
 	void mem_alloc::init(uint64_t part_cnt, uint64_t bytes_per_part) {
 		if (g_thread_cnt < g_init_parallelism)

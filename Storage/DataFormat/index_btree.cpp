@@ -138,7 +138,7 @@ namespace storage
 			ex_list[depth ++] = last_ex;
 		} else
 			ex_list[depth++] = leaf;
-		// from this point, the required data structures are all latched,
+		// from this point, the required data.txt structures are all latched,
 		// so the system should not abort anymore.
 		//	M_ASSERT(!index_exist(key), "the index does not exist!");
 		// insert into btree if the leaf is not full

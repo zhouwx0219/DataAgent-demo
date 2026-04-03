@@ -3,22 +3,118 @@
 //
 
 #include "kv_api.h"
-
-#include "kv_api.h"
 #include <atomic>
+#include <fstream>
+#include <iostream>
+#include <string>
 
-
+#include "System/thread.h"
 #include "System/global.h"
-#include "System/txn.h"
+#include "System/mem_alloc.h"
 #include "DataFormat/table.h"
+#include "DataFormat/row.h"
 #include "DataFormat/index_hash.h"
+#include "test/wl.h"
+#include "test/test.h"
 
 namespace server {
+using namespace std;
 
 static std::atomic<uint64_t> g_txn_id{1};
+storage::workload* g_wl = nullptr;
+const std::string DATA_FILE = "./Storage/data.txt.txt";
+const std::string SCHEMA_FILE = "./Storage/data_schema.txt";
+
+// 简单的字符串哈希函数，将 string 转为 uint64_t 作为索引键
+uint64_t hash_key(const std::string& key) {
+    std::hash<std::string> hasher;
+    return hasher(key);
+}
 
 bool init_engine() {
-    // TODO: 调你现有初始化逻辑（global/mem/table/index/workload等）
+
+    std::cout << "[Engine] Initializing KV Engine..." << std::endl;
+    g_wl = new storage::TestWorkload();
+    g_wl->init();
+    if (g_wl->init_schema(SCHEMA_FILE) != storage::RCOK) {
+        std::cerr << "[Engine] Failed to load schema!" << std::endl;
+        return false;
+    }
+
+    storage::table_t* the_table = g_wl->tables["Data_TABLE"];
+    storage::INDEX* the_index = g_wl->indexes["Data_INDEX"];
+
+    if (!the_table || !the_index) {
+        std::cerr << "[Engine] Table or Index not found in schema!" << std::endl;
+        return false;
+    }
+
+    // 3. 从文本文件加载数据到内存
+    std::ifstream infile(DATA_FILE);
+    if (!infile.is_open()) {
+        std::cout << "[Engine] No existing data.txt file found. Starting fresh." << std::endl;
+        return true;
+    }
+
+    std::string key_str, value_str;
+    int loaded_count = 0;
+
+    // 初始化一个虚拟的线程上下文，用于绑定事务
+    // 假设主线程 ID 为 0
+    storage::thread_t* h_thd = new storage::thread_t();
+    h_thd->init(0, g_wl);
+
+    while (infile >> key_str >> value_str) {
+        uint64_t primary_key = hash_key(key_str);
+
+        // 2. 开启事务 (Start Transaction)
+        storage::txn_man* txn = nullptr;
+        g_wl->get_txn_man(txn, h_thd); // 内部会调用 txn->init() 完成初始化
+
+        storage::RC rc = storage::RCOK;
+
+        // 3. 分配新行并设置数据
+        storage::row_t* new_row = nullptr;
+        uint64_t row_id;
+        int part_id = 0; // 默认单分区
+
+        rc = the_table->get_new_row(new_row, part_id, row_id);
+        if (rc != storage::RCOK) {
+            txn->finish(storage::Abort); // 分配失败，回滚事务
+            continue;
+        }
+
+        // 写入列数据
+
+        new_row->set_primary_key(primary_key);
+        new_row->set_value(0, (void*) key_str.c_str());
+        new_row->set_value(1, (void*) value_str.c_str());
+
+        // 4. 封装为 itemid_t 并插入索引
+        storage::itemid_t* m_item = (storage::itemid_t*) storage::mem_allocator.alloc(sizeof(storage::itemid_t), part_id);
+        m_item->type = storage::DT_row;
+        m_item->location = new_row;
+        m_item->valid = true;
+
+        rc = the_index->index_insert(primary_key, m_item, part_id);
+
+        // 5. 提交事务 (Commit Transaction)
+        if (rc == storage::RCOK) {
+            // finish() 会触发 OCC 的 validate 阶段和最终的 commit
+            rc = txn->finish(rc);
+            if (rc == storage::RCOK || rc == storage::Commit) {
+                loaded_count++;
+            }
+        } else {
+            // 索引插入失败（如主键冲突），回滚事务
+            txn->finish(storage::Abort);
+        }
+
+        // 注意：根据 DBx1000 的内存管理策略，txn 的内存可能由 mem_allocator 回收或复用
+    }
+
+    infile.close();
+    std::cout << "[Engine] Successfully loaded " << loaded_count << " records from " << DATA_FILE << std::endl;
     // 返回 true 表示初始化成功
     return true;
 }

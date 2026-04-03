@@ -87,7 +87,7 @@ value = *(type *)&data[pos];\
         char * data;
         table_t * table;
     private:
-        // primary key should be calculated from the data stored in the row.
+        // primary key should be calculated from the data.txt stored in the row.
         uint64_t 		_primary_key;
         uint64_t		_part_id;
         uint64_t 		_row_id;

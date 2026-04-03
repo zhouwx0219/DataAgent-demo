@@ -99,7 +99,7 @@ stats.name += value;
 	// malloc helper
 	/************************************************/
 	// In order to avoid false sharing, any unshared read/write array residing on the same
-	// cache line should be modified to be read only array with pointers to thread local data block.
+	// cache line should be modified to be read only array with pointers to thread local data.txt block.
 	// TODO. in order to have per-thread malloc, this needs to be modified !!!
 
 #define ARR_PTR_MULTI(type, name, size, scale) \
@@ -140,7 +140,7 @@ for (UInt32 i = 0; i < size; i++) \
 enum Data_type {DT_table, DT_page, DT_row };
 
 	// TODO currently, only DR_row supported
-	// data item type.
+	// data.txt item type.
 	class itemid_t {
 	public:
 		itemid_t() { };

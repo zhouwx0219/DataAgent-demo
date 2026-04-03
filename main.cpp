@@ -5,7 +5,6 @@
 
 int main()
 {
-    if (!storage::init)
 
     if (!server::init_engine()) {
         std::cerr << "engine init failed\n";
