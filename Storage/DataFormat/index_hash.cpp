@@ -17,6 +17,16 @@ namespace storage
 	}
 
 	RC
+	IndexHash::init(table_t * table) {
+		int _part_cnt = 1;
+		uint64_t _bucket_cnt = 1;
+		init(_bucket_cnt, _part_cnt);
+		assert(table != nullptr);
+		this->table = table;
+		return RCOK;
+	}
+
+	RC
 	IndexHash::init(int part_cnt, table_t * table, uint64_t bucket_cnt) {
 		init(bucket_cnt, part_cnt);
 		this->table = table;
@@ -121,6 +131,18 @@ namespace storage
 		}
 	}
 
+	// void BucketHeader::read_item(idx_key_t key, itemid_t * &item, const char * tname)
+	// {
+	// 	BucketNode * cur_node = first_node;
+	// 	while (cur_node != NULL) {
+	// 		if (cur_node->key == key)
+	// 			break;
+	// 		cur_node = cur_node->next;
+	// 	}
+	// 	M_ASSERT(cur_node->key == key, "Key does not exist!");
+	// 	item = cur_node->items;
+	// }
+
 	void BucketHeader::read_item(idx_key_t key, itemid_t * &item, const char * tname)
 	{
 		BucketNode * cur_node = first_node;
@@ -129,7 +151,13 @@ namespace storage
 				break;
 			cur_node = cur_node->next;
 		}
-		M_ASSERT(cur_node->key == key, "Key does not exist!");
+
+		// [修改这里] 不要 Assert，找不到就返回 NULL
+		if (cur_node == NULL || cur_node->key != key) {
+			item = NULL;
+			return;
+		}
+
 		item = cur_node->items;
 	}
 }

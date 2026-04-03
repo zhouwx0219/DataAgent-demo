@@ -83,20 +83,9 @@ namespace storage
 				string tname(items[0]);
 				INDEX * index = (INDEX *) _mm_malloc(sizeof(INDEX), 64);
 				new(index) INDEX();
-				int part_cnt = (CENTRAL_INDEX)? 1 : g_part_cnt;
-				if (tname == "ITEM")
-					part_cnt = 1;
-#if INDEX_STRUCT == IDX_HASH
-#if WORKLOAD == YCSB
-				index->init(part_cnt, tables[tname], g_synth_table_size * 2);
-#elif WORKLOAD == TPCC
-				assert(tables[tname] != NULL);
-				index->init(part_cnt, tables[tname], stoi( items[1] ) * part_cnt);
-#endif
-#else
-				index->init(part_cnt, tables[tname]);
-#endif
+				index->init(tables[tname]);
 				indexes[iname] = index;
+				assert(indexes[iname]->table != nullptr);
 			}
 		}
 		fin.close();

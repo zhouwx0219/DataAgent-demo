@@ -10,17 +10,18 @@ namespace storage
 	RC TestWorkload::init() {
 		workload::init();
 		string path;
-		path = "./benchmarks/TEST_schema.txt";
-		init_schema( path.c_str() );
+		path = "../Storage/test/data_schema.txt";
+		init_schema(path.c_str() );
 
+		if (the_table == nullptr || the_index == nullptr) assert(false);
 		init_table();
 		return RCOK;
 	}
 
 	RC TestWorkload::init_schema(const char * schema_file) {
 		workload::init_schema(schema_file);
-		the_table = tables["MAIN_TABLE"];
-		the_index = indexes["MAIN_INDEX"];
+		the_table = tables["Data_TABLE"];
+		the_index = indexes["Data_INDEX"];
 		return RCOK;
 	}
 
@@ -34,9 +35,8 @@ namespace storage
 			assert(rc == RCOK);
 			uint64_t primary_key = rid;
 			new_row->set_primary_key(primary_key);
-			new_row->set_value(0, rid);
-			new_row->set_value(1, 0);
-			new_row->set_value(2, 0);
+			new_row->set_value(0, (void*) std::to_string(rid).c_str());
+			new_row->set_value(1, (void*) std::to_string(rid).c_str());
 			itemid_t * m_item = (itemid_t *) mem_allocator.alloc( sizeof(itemid_t), part_id );
 			assert(m_item != NULL);
 			m_item->type = DT_row;

@@ -38,6 +38,7 @@ namespace storage
 	{
 	public:
 		RC 			init(uint64_t bucket_cnt, int part_cnt);
+		RC	        init(table_t * table);
 		RC 			init(int part_cnt,
 						table_t * table,
 						uint64_t bucket_cnt);
