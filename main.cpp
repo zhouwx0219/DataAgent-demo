@@ -1,18 +1,31 @@
 #include <iostream>
+#include "Server/server.h"
+#include "Server/session.h"
+#include "Server/kv_api.h"
 
-// TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
 int main()
 {
-    // TIP Press <shortcut actionId="RenameElement"/> when your caret is at the <b>lang</b> variable name to see how CLion can help you rename it.
-    auto lang = "C++";
-    std::cout << "Hello and welcome to " << lang << "!\n";
+    if (!storage::init)
 
-    for (int i = 1; i <= 5; i++)
-    {
-        // TIP Press <shortcut actionId="Debug"/> to start debugging your code. We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.
-        std::cout << "i = " << i << std::endl;
+    if (!server::init_engine()) {
+        std::cerr << "engine init failed\n";
+        return 1;
     }
 
+
+
+    int listen_fd = server::create_listen_socket("0.0.0.0", 19090, 128);
+    std::cout << "DataAgentDB listening on 0.0.0.0:19090\n";
+
+    ///todo: thread pool
+    server::run_accept_loop(listen_fd, [](int client_fd) {
+        server::handle_client(client_fd);
+    });
+
     return 0;
-    // TIP See CLion help at <a href="https://www.jetbrains.com/help/clion/">jetbrains.com/help/clion/</a>. Also, you can try interactive lessons for CLion by selecting 'Help | Learn IDE Features' from the main menu.
 }
+
+/*
+ connect: nc 127.0.0.1 19090
+
+*/

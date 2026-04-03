@@ -190,6 +190,41 @@
 			"isCMake" : true,
 			"isExternal" : true,
 			"path" : "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/Platform/Linker/Linux-GNU.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindThreads.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/CheckLibraryExists.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/CheckIncludeFile.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/CheckCSourceCompiles.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/Internal/CheckSourceCompiles.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindPackageMessage.cmake"
 		}
 	],
 	"kind" : "cmakeFiles",

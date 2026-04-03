@@ -1,13 +1,5 @@
 /home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/ninja/linux/x64/ninja -DCMAKE_C_COMPILER=/home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc -DCMAKE_CXX_COMPILER=/home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/g++ -G Ninja -S /home/zwx/CLionProjects/DataAgent-demo -B /home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug
+-- Using system jemalloc: /usr/lib64/libjemalloc.so
 -- Configuring done (0.0s)
-CMake Error at CMakeLists.txt:6 (add_executable):
-  Cannot find source file:
-
-    Storage/*.cpp
-
-
-CMake Error at CMakeLists.txt:6 (add_executable):
-  No SOURCES given to target: DataAgent_demo
-
-
-CMake Generate step failed.  Build files cannot be regenerated correctly.
+-- Generating done (0.0s)
+-- Build files have been written to: /home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug

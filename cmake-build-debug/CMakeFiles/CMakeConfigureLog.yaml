@@ -538,3 +538,104 @@ events:
       Running the CXX compiler's linker: "/usr/bin/ld" "-v"
       GNU ld version 2.27-44.base.el7_9.1
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/Internal/CheckSourceCompiles.cmake:108 (try_compile)"
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/CheckCSourceCompiles.cmake:58 (cmake_check_source_compiles)"
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindThreads.cmake:97 (CHECK_C_SOURCE_COMPILES)"
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindThreads.cmake:163 (_threads_check_libc)"
+      - "CMakeLists.txt:40 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-mTnVvJ"
+      binary: "/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-mTnVvJ"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: '/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-mTnVvJ'
+        
+        Run Build Command(s): /home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/ninja/linux/x64/ninja -v cmTC_663dd
+        [1/2] /home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc -DCMAKE_HAVE_LIBC_PTHREAD  -fdiagnostics-color=always -o CMakeFiles/cmTC_663dd.dir/src.c.o -c /home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-mTnVvJ/src.c
+        [2/2] : && /home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc   CMakeFiles/cmTC_663dd.dir/src.c.o -o cmTC_663dd   && :
+        FAILED: cmTC_663dd 
+        : && /home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc   CMakeFiles/cmTC_663dd.dir/src.c.o -o cmTC_663dd   && :
+        CMakeFiles/cmTC_663dd.dir/src.c.o: In function `main':
+        src.c:(.text+0x2d): undefined reference to `pthread_create'
+        src.c:(.text+0x39): undefined reference to `pthread_detach'
+        src.c:(.text+0x45): undefined reference to `pthread_cancel'
+        src.c:(.text+0x56): undefined reference to `pthread_join'
+        src.c:(.text+0x6a): undefined reference to `pthread_atfork'
+        collect2: error: ld returned 1 exit status
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/CheckLibraryExists.cmake:78 (try_compile)"
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindThreads.cmake:112 (CHECK_LIBRARY_EXISTS)"
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindThreads.cmake:175 (_threads_check_lib)"
+      - "CMakeLists.txt:40 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthreads"
+    directories:
+      source: "/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-9e9o0O"
+      binary: "/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-9e9o0O"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREADS_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: '/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-9e9o0O'
+        
+        Run Build Command(s): /home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/ninja/linux/x64/ninja -v cmTC_4926a
+        [1/2] /home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc   -DCHECK_FUNCTION_EXISTS=pthread_create -fdiagnostics-color=always -o CMakeFiles/cmTC_4926a.dir/CheckFunctionExists.c.o -c /home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-9e9o0O/CheckFunctionExists.c
+        [2/2] : && /home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc -DCHECK_FUNCTION_EXISTS=pthread_create  CMakeFiles/cmTC_4926a.dir/CheckFunctionExists.c.o -o cmTC_4926a  -lpthreads && :
+        FAILED: cmTC_4926a 
+        : && /home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc -DCHECK_FUNCTION_EXISTS=pthread_create  CMakeFiles/cmTC_4926a.dir/CheckFunctionExists.c.o -o cmTC_4926a  -lpthreads && :
+        /usr/bin/ld: cannot find -lpthreads
+        collect2: error: ld returned 1 exit status
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/CheckLibraryExists.cmake:78 (try_compile)"
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindThreads.cmake:112 (CHECK_LIBRARY_EXISTS)"
+      - "/home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/cmake/linux/x64/share/cmake-3.31/Modules/FindThreads.cmake:176 (_threads_check_lib)"
+      - "CMakeLists.txt:40 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthread"
+    directories:
+      source: "/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-YjUULU"
+      binary: "/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-YjUULU"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREAD_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: '/home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-YjUULU'
+        
+        Run Build Command(s): /home/zwx/.cache/JetBrains/RemoteDev/dist/a7e22285efc50_CLion-251.23774.281/bin/ninja/linux/x64/ninja -v cmTC_ad319
+        [1/2] /home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc   -DCHECK_FUNCTION_EXISTS=pthread_create -fdiagnostics-color=always -o CMakeFiles/cmTC_ad319.dir/CheckFunctionExists.c.o -c /home/zwx/CLionProjects/DataAgent-demo/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-YjUULU/CheckFunctionExists.c
+        [2/2] : && /home/zwx/binarylibs-6/buildtools/gcc/gcc/bin/gcc -DCHECK_FUNCTION_EXISTS=pthread_create  CMakeFiles/cmTC_ad319.dir/CheckFunctionExists.c.o -o cmTC_ad319  -lpthread && :
+        
+      exitCode: 0
+...

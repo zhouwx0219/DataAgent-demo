@@ -38,9 +38,9 @@
 			[
 				{
 					"directoryIndex" : 0,
-					"id" : "DataAgent_demo::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-DataAgent_demo-Debug-9cf4dbc451f71c6ed986.json",
-					"name" : "DataAgent_demo",
+					"id" : "rundb::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-rundb-Debug-f3aa9b2fb926cd4ebec0.json",
+					"name" : "rundb",
 					"projectIndex" : 0
 				}
 			]
