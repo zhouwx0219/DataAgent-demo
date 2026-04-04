@@ -1,74 +1,163 @@
+#include "global.h"	
 #include "index_hash.h"
+#include "mem_alloc.h"
 #include "table.h"
-
-namespace storage {
-
-	IndexHash::IndexHash() = default;
-
-	IndexHash::~IndexHash() {
-		std::unique_lock<std::shared_mutex> lk(latch_);
-		map_.clear();
-	}
-
-	RC IndexHash::init() {
-		std::unique_lock<std::shared_mutex> lk(latch_);
-		map_.clear();
-		map_.reserve(reserve_size_);
+namespace storage
+{
+	RC IndexHash::init(uint64_t bucket_cnt, int part_cnt) {
+		_bucket_cnt = bucket_cnt;
+		_bucket_cnt_per_part = bucket_cnt / part_cnt;
+		_buckets = new BucketHeader * [part_cnt];
+		for (int i = 0; i < part_cnt; i++) {
+			_buckets[i] = (BucketHeader *) _mm_malloc(sizeof(BucketHeader) * _bucket_cnt_per_part, 64);
+			for (uint32_t n = 0; n < _bucket_cnt_per_part; n ++)
+				_buckets[i][n].init();
+		}
 		return RCOK;
 	}
 
-	RC IndexHash::init(uint64_t size) {
-		reserve_size_ = (size == 0 ? 1024 : size);
-		std::unique_lock<std::shared_mutex> lk(latch_);
-		map_.clear();
-		map_.reserve(reserve_size_);
-		return RCOK;
-	}
-
-	RC IndexHash::init(table_t * table) {
+	RC
+	IndexHash::init(table_t * table) {
+		int _part_cnt = 1;
+		uint64_t _bucket_cnt = 1;
+		init(_bucket_cnt, _part_cnt);
+		assert(table != nullptr);
 		this->table = table;
-		return init(); // 用默认 reserve_size_
+		return RCOK;
+	}
+
+	RC
+	IndexHash::init(int part_cnt, table_t * table, uint64_t bucket_cnt) {
+		init(bucket_cnt, part_cnt);
+		this->table = table;
+		return RCOK;
 	}
 
 	bool IndexHash::index_exist(idx_key_t key) {
-		std::shared_lock<std::shared_mutex> lk(latch_);
-		return map_.find(key) != map_.end();
+		assert(false);
 	}
 
-	RC IndexHash::index_insert(idx_key_t key, itemid_t * item, int part_id) {
-		(void)part_id;
-		if (item == nullptr) return Abort;
+	void
+	IndexHash::get_latch(BucketHeader * bucket) {
+		while (!ATOM_CAS(bucket->locked, false, true)) {}
+	}
 
-		std::unique_lock<std::shared_mutex> lk(latch_);
-		map_[key] = item;
-		return RCOK;
+	void
+	IndexHash::release_latch(BucketHeader * bucket) {
+		bool ok = ATOM_CAS(bucket->locked, true, false);
+		assert(ok);
+	}
+
+
+	RC IndexHash::index_insert(idx_key_t key, itemid_t * item, int part_id) {
+		RC rc = RCOK;
+		uint64_t bkt_idx = hash(key);
+		assert(bkt_idx < _bucket_cnt_per_part);
+		BucketHeader * cur_bkt = &_buckets[part_id][bkt_idx];
+		// 1. get the ex latch
+		get_latch(cur_bkt);
+
+		// 2. update the latch list
+		cur_bkt->insert_item(key, item, part_id);
+
+		// 3. release the latch
+		release_latch(cur_bkt);
+		return rc;
 	}
 
 	RC IndexHash::index_read(idx_key_t key, itemid_t * &item, int part_id) {
-		(void)part_id;
-		std::shared_lock<std::shared_mutex> lk(latch_);
+		uint64_t bkt_idx = hash(key);
+		assert(bkt_idx < _bucket_cnt_per_part);
+		BucketHeader * cur_bkt = &_buckets[part_id][bkt_idx];
+		RC rc = RCOK;
+		// 1. get the sh latch
+		//	get_latch(cur_bkt);
+		cur_bkt->read_item(key, item, table->get_table_name());
+		// 3. release the latch
+		//	release_latch(cur_bkt);
+		return rc;
 
-		auto it = map_.find(key);
-		if (it == map_.end()) {
-			item = nullptr;
-			return Abort;
+	}
+
+	RC IndexHash::index_read(idx_key_t key, itemid_t * &item,
+							int part_id, int thd_id) {
+		uint64_t bkt_idx = hash(key);
+		assert(bkt_idx < _bucket_cnt_per_part);
+		BucketHeader * cur_bkt = &_buckets[part_id][bkt_idx];
+		RC rc = RCOK;
+		// 1. get the sh latch
+		//	get_latch(cur_bkt);
+		cur_bkt->read_item(key, item, table->get_table_name());
+		// 3. release the latch
+		//	release_latch(cur_bkt);
+		return rc;
+	}
+
+	/************** BucketHeader Operations ******************/
+
+	void BucketHeader::init() {
+		node_cnt = 0;
+		first_node = NULL;
+		locked = false;
+	}
+
+	void BucketHeader::insert_item(idx_key_t key,
+			itemid_t * item,
+			int part_id)
+	{
+		BucketNode * cur_node = first_node;
+		BucketNode * prev_node = NULL;
+		while (cur_node != NULL) {
+			if (cur_node->key == key)
+				break;
+			prev_node = cur_node;
+			cur_node = cur_node->next;
+		}
+		if (cur_node == NULL) {
+			BucketNode * new_node = (BucketNode *)
+				mem_allocator.alloc(sizeof(BucketNode), part_id );
+			new_node->init(key);
+			new_node->items = item;
+			if (prev_node != NULL) {
+				new_node->next = prev_node->next;
+				prev_node->next = new_node;
+			} else {
+				new_node->next = first_node;
+				first_node = new_node;
+			}
+		} else {
+			item->next = cur_node->items;
+			cur_node->items = item;
+		}
+	}
+
+	// void BucketHeader::read_item(idx_key_t key, itemid_t * &item, const char * tname)
+	// {
+	// 	BucketNode * cur_node = first_node;
+	// 	while (cur_node != NULL) {
+	// 		if (cur_node->key == key)
+	// 			break;
+	// 		cur_node = cur_node->next;
+	// 	}
+	// 	M_ASSERT(cur_node->key == key, "Key does not exist!");
+	// 	item = cur_node->items;
+	// }
+
+	void BucketHeader::read_item(idx_key_t key, itemid_t * &item, const char * tname)
+	{
+		BucketNode * cur_node = first_node;
+		while (cur_node != NULL) {
+			if (cur_node->key == key)
+				break;
+			cur_node = cur_node->next;
 		}
 
-		item = it->second;
-		return RCOK;
-	}
+		// [修改这里] 不要 Assert，找不到就返回 NULL
+		if (cur_node == NULL || cur_node->key != key) {
+			item = NULL;
+			return;
+		}
 
-	RC IndexHash::index_read(idx_key_t key, itemid_t * &item, int part_id, int thd_id) {
-		(void)thd_id; // 简化版不使用线程ID
-		return index_read(key, item, part_id);
+		item = cur_node->items;
 	}
-
-	RC IndexHash::index_remove(idx_key_t key) {
-		std::unique_lock<std::shared_mutex> lk(latch_);
-		auto it = map_.find(key);
-		if (it == map_.end()) return Abort;
-		map_.erase(it);
-		return RCOK;
-	}
-
-} // namespace storage
+}

@@ -5,6 +5,7 @@
 #include "../DataFormat/table.h"
 #include "../DataFormat/catalog.h"
 #include "index_hash.h"
+#include "index_btree.h"
 #include "../System/mem_alloc.h"
 namespace storage
 {
