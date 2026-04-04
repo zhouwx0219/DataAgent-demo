@@ -62,12 +62,12 @@ ts_t txn_man::get_ts() {
 
 itemid_t * txn_man::index_read(INDEX * index, idx_key_t key, int part_id) {
 	itemid_t * item = nullptr;
-	index->index_read(key, item, part_id, get_thd_id());
+	index->index_read(key, item, part_id);
 	return item;
 }
 
 void txn_man::index_read(INDEX * index, idx_key_t key, int part_id, itemid_t *& item) {
-	index->index_read(key, item, part_id, get_thd_id());
+	index->index_read(key, item, part_id);
 }
 
 row_t * txn_man::get_row(row_t * row, access_t type) {

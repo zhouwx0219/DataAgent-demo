@@ -32,7 +32,7 @@
 
 #include "pthread.h"
 #include "config.h"
-#include "stats.h"
+
 
 namespace storage
 {

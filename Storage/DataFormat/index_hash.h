@@ -1,62 +1,44 @@
-#pragma once 
+#pragma once
 
 #include "global.h"
 #include "helper.h"
 #include "index_base.h"
-namespace storage
-{
-	//TODO make proper variables private
-	// each BucketNode contains items sharing the same key
-	class BucketNode {
-	public:
-		BucketNode(idx_key_t key) {	init(key); };
-		void init(idx_key_t key) {
-			this->key = key;
-			next = NULL;
-			items = NULL;
-		}
-		idx_key_t 		key;
-		// The node for the next key
-		BucketNode * 	next;
-		// NOTE. The items can be a list of items connected by the next pointer.
-		itemid_t * 		items;
-	};
+#include <unordered_map>
+#include <shared_mutex>
 
-	// BucketHeader does concurrency control of Hash
-	class BucketHeader {
-	public:
-		void init();
-		void insert_item(idx_key_t key, itemid_t * item, int part_id);
-		void read_item(idx_key_t key, itemid_t * &item, const char * tname);
-		BucketNode * 	first_node;
-		uint64_t 		node_cnt;
-		bool 			locked;
-	};
+namespace storage {
 
-	// TODO Hash index does not support partition yet.
-	class IndexHash  : public index_base
-	{
+	class IndexHash : public index_base {
 	public:
-		RC 			init(uint64_t bucket_cnt, int part_cnt);
-		RC	        init(table_t * table);
-		RC 			init(int part_cnt,
-						table_t * table,
-						uint64_t bucket_cnt);
-		bool 		index_exist(idx_key_t key); // check if the key exist.
-		RC 			index_insert(idx_key_t key, itemid_t * item, int part_id=-1);
-		// the following call returns a single item
-		RC	 		index_read(idx_key_t key, itemid_t * &item, int part_id=-1);
-		RC	 		index_read(idx_key_t key, itemid_t * &item,
-								int part_id=-1, int thd_id=0);
+		IndexHash();
+		~IndexHash();
+
+		RC init() override;
+		RC init(uint64_t size) override;
+		RC init(table_t * table);
+
+		bool index_exist(idx_key_t key) override;
+
+		RC index_insert(idx_key_t key,
+						itemid_t * item,
+						int part_id = -1) override;
+
+		RC index_read(idx_key_t key,
+					  itemid_t * &item,
+					  int part_id = -1) override;
+
+		RC index_read(idx_key_t key,
+					  itemid_t * &item,
+					  int part_id,
+					  int thd_id) override;
+
+
+		RC index_remove(idx_key_t key) override;
+
 	private:
-		void get_latch(BucketHeader * bucket);
-		void release_latch(BucketHeader * bucket);
-
-		// TODO implement more complex hash function
-		uint64_t hash(idx_key_t key) {	return key % _bucket_cnt_per_part; }
-
-		BucketHeader ** 	_buckets;
-		uint64_t	 		_bucket_cnt;
-		uint64_t 			_bucket_cnt_per_part;
+		std::unordered_map<idx_key_t, itemid_t*> map_;
+		mutable std::shared_mutex latch_;
+		uint64_t reserve_size_ = 1024;
 	};
-}
+
+} // namespace storage
