@@ -5,79 +5,100 @@ import socket
 import threading
 import time
 import random
-from dataclasses import dataclass, field
-from typing import Optional, List
+from collections import defaultdict
 
 # =========================
 # 配置
 # =========================
 HOST = "127.0.0.1"
 PORT = 19090
-
-THREADS = 10
-TXN_PER_THREAD = 100
-OPS_PER_TXN = 8
-READ_RATIO = 0.5
-ROLLBACK_RATIO = 0.2
-
-KEY_SPACE = 20000
-
-CONNECT_TIMEOUT = 300
-SOCKET_TIMEOUT = 500
 EOL = "\n"
 
+# 并发参数
+THREADS = 16
+TXN_PER_THREAD = 2000
 
+# 热点 key（越小冲突越强）
+HOT_KEYS = 8
+KEY_PREFIX = "hotk_"
+
+# 网络超时
+CONNECT_TIMEOUT = 3
+SOCKET_TIMEOUT = 5
+
+# 命令
 CMD_START = "START"
 CMD_GET = "GET"
 CMD_PUT = "PUT"
 CMD_COMMIT = "COMMIT"
 CMD_ROLLBACK = "ROLLBACK"
 
+# 是否打印调试
+DEBUG = False
+
 
 # =========================
-# 协议判断
+# 协议辅助
 # =========================
-def is_ok(resp: str) -> bool:
-    r = resp.strip().upper()
-    # 根据你的服务返回格式可再扩展
-    return (
-            r.startswith("OK")
-            or r.startswith("RCOK")
-            or r.startswith("VALUE")
-            or r.startswith("FOUND")
-    )
+def dprint(msg):
+    if DEBUG:
+        print(msg)
 
-def is_not_found(resp: str) -> bool:
-    r = resp.strip().upper()
-    return ("NOT_FOUND" in r) or ("NOKEY" in r) or ("MISS" in r)
+def normalize(s):
+    return s.strip()
 
-def cmd_start() -> str:
-    return f"{CMD_START}{EOL}"
+def is_ok(resp):
+    r = normalize(resp).upper()
+    return r.startswith("OK") or r.startswith("VALUE") or r.startswith("FOUND")
 
-def cmd_get(key: str) -> str:
-    return f"{CMD_GET} {key}{EOL}"
+def is_err(resp):
+    return normalize(resp).upper().startswith("ERR")
 
-def cmd_put(key: str, val: str) -> str:
-    return f"{CMD_PUT} {key} {val}{EOL}"
+def parse_int_from_resp(resp):
+    """
+    尽量从响应里提取整数。
+    支持如:
+    - VALUE hotk_1 123
+    - OK 123
+    - 123
+    """
+    txt = normalize(resp)
+    parts = txt.split()
+    # 从后往前找第一个可解析整数
+    for token in reversed(parts):
+        try:
+            return int(token)
+        except Exception:
+            pass
+    return None
 
-def cmd_commit() -> str:
-    return f"{CMD_COMMIT}{EOL}"
+def cmd_start():
+    return CMD_START + EOL
 
-def cmd_rollback() -> str:
-    return f"{CMD_ROLLBACK}{EOL}"
+def cmd_get(k):
+    return "{} {}{}".format(CMD_GET, k, EOL)
+
+def cmd_put(k, v):
+    return "{} {} {}{}".format(CMD_PUT, k, v, EOL)
+
+def cmd_commit():
+    return CMD_COMMIT + EOL
+
+def cmd_rollback():
+    return CMD_ROLLBACK + EOL
 
 
 # =========================
 # Session 客户端
 # =========================
-class SessionClient:
-    def __init__(self, host: str, port: int):
+class SessionClient(object):
+    def __init__(self, host, port):
         self.host = host
         self.port = port
         self.sock = None
         self.buf = b""
 
-    def _readline(self) -> str:
+    def _readline(self):
         while b"\n" not in self.buf:
             chunk = self.sock.recv(4096)
             if not chunk:
@@ -90,13 +111,12 @@ class SessionClient:
         self.sock = socket.create_connection((self.host, self.port), timeout=CONNECT_TIMEOUT)
         self.sock.settimeout(SOCKET_TIMEOUT)
 
-        # 关键：消费服务端欢迎消息，避免后续响应错位
+        # 读取 greeting，避免请求响应错位
         try:
             first = self._readline().strip()
-            print(f"[DBG] <<< {first}")
-            # 如果不是 welcome，也可按需放回/忽略；当前你的服务就是 welcome
+            dprint("[DBG] <<< {}".format(first))
+            # 允许是 WELCOME ...；若不是也不硬失败
         except socket.timeout:
-            # 没有欢迎词也允许继续（兼容）
             pass
 
     def close(self):
@@ -107,59 +127,67 @@ class SessionClient:
                 pass
             self.sock = None
 
-    def request(self, cmd: str) -> str:
+    def request(self, cmd):
         if not self.sock:
-            raise RuntimeError("session not connected")
+            raise RuntimeError("not connected")
         self.sock.sendall(cmd.encode("utf-8"))
         resp = self._readline()
-        print(f"[DBG] >>> {cmd.strip()}")
-        print(f"[DBG] <<< {resp.strip()}")
+        dprint("[DBG] >>> {}".format(cmd.strip()))
+        dprint("[DBG] <<< {}".format(resp.strip()))
         return resp
 
 
-@dataclass
-class Stats:
-    start_ok: int = 0
-    start_fail: int = 0
+# =========================
+# 统计
+# =========================
+class Stats(object):
+    def __init__(self):
+        self.conn_fail = 0
+        self.exceptions = 0
 
-    put_ok: int = 0
-    put_fail: int = 0
+        self.start_ok = 0
+        self.start_fail = 0
+        self.get_ok = 0
+        self.get_fail = 0
+        self.put_ok = 0
+        self.put_fail = 0
+        self.commit_ok = 0
+        self.commit_fail = 0
+        self.rollback_ok = 0
+        self.rollback_fail = 0
 
-    get_ok: int = 0
-    get_not_found: int = 0
-    get_fail: int = 0
+        self.txn_success = 0
+        self.txn_fail = 0
 
-    commit_ok: int = 0
-    commit_fail: int = 0
+        # 冲突相关
+        self.retry_count = 0
+        self.abort_count = 0
 
-    rollback_ok: int = 0
-    rollback_fail: int = 0
+        self.lat_ms = []
 
-    txn_success: int = 0
-    txn_fail: int = 0
+        # 每个 key 成功提交的 +1 次数（用于最终一致性校验）
+        self.applied_increments = defaultdict(int)
 
-    conn_fail: int = 0
-    exceptions: int = 0
-
-    latency_ms: List[float] = field(default_factory=list)
-
-    def merge(self, o: "Stats"):
+    def merge(self, o):
+        self.conn_fail += o.conn_fail
+        self.exceptions += o.exceptions
         self.start_ok += o.start_ok
         self.start_fail += o.start_fail
+        self.get_ok += o.get_ok
+        self.get_fail += o.get_fail
         self.put_ok += o.put_ok
         self.put_fail += o.put_fail
-        self.get_ok += o.get_ok
-        self.get_not_found += o.get_not_found
-        self.get_fail += o.get_fail
         self.commit_ok += o.commit_ok
         self.commit_fail += o.commit_fail
         self.rollback_ok += o.rollback_ok
         self.rollback_fail += o.rollback_fail
         self.txn_success += o.txn_success
         self.txn_fail += o.txn_fail
-        self.conn_fail += o.conn_fail
-        self.exceptions += o.exceptions
-        self.latency_ms.extend(o.latency_ms)
+        self.retry_count += o.retry_count
+        self.abort_count += o.abort_count
+        self.lat_ms.extend(o.lat_ms)
+        for k, v in o.applied_increments.items():
+            self.applied_increments[k] += v
 
 
 def percentile(arr, p):
@@ -170,10 +198,37 @@ def percentile(arr, p):
     return s[idx]
 
 
-def worker(tid: int, gstats: Stats, lock: threading.Lock):
-    st = Stats()
+# =========================
+# 预加载
+# =========================
+def preload_keys(keys, init_val=0):
     cli = SessionClient(HOST, PORT)
+    cli.connect()
+    try:
+        # 单事务预加载
+        r = cli.request(cmd_start())
+        if not is_ok(r):
+            raise RuntimeError("preload START failed: {}".format(r.strip()))
+
+        for k in keys:
+            r = cli.request(cmd_put(k, str(init_val)))
+            if not is_ok(r):
+                raise RuntimeError("preload PUT failed key={} resp={}".format(k, r.strip()))
+
+        r = cli.request(cmd_commit())
+        if not is_ok(r):
+            raise RuntimeError("preload COMMIT failed: {}".format(r.strip()))
+    finally:
+        cli.close()
+
+
+# =========================
+# 工作者线程：事务 +1
+# =========================
+def worker(tid, keys, gstats, lock):
+    st = Stats()
     rng = random.Random(20260405 + tid)
+    cli = SessionClient(HOST, PORT)
 
     try:
         cli.connect()
@@ -184,74 +239,88 @@ def worker(tid: int, gstats: Stats, lock: threading.Lock):
         return
 
     try:
-        for tx in range(TXN_PER_THREAD):
-            txn_ok = True
+        for _ in range(TXN_PER_THREAD):
             t0 = time.perf_counter()
+            key = keys[rng.randint(0, len(keys) - 1)]
+            txn_ok = False
 
             try:
                 # START
-                resp = cli.request(cmd_start())
-                if is_ok(resp):
+                r = cli.request(cmd_start())
+                if is_ok(r):
                     st.start_ok += 1
                 else:
                     st.start_fail += 1
-                    txn_ok = False
+                    st.txn_fail += 1
+                    st.abort_count += 1
+                    st.lat_ms.append((time.perf_counter() - t0) * 1000.0)
+                    continue
 
-                # TXN 内操作
-                if txn_ok:
-                    for i in range(OPS_PER_TXN):
-                        key = f"k{rng.randint(1, KEY_SPACE)}"
-
-                        if rng.random() < READ_RATIO:
-                            resp = cli.request(cmd_get(key))
-                            if is_ok(resp):
-                                st.get_ok += 1
-                            elif is_not_found(resp):
-                                st.get_not_found += 1
-                            else:
-                                st.get_fail += 1
-                                txn_ok = False
-                                break
-                        else:
-                            val = f"t{tid}_tx{tx}_op{i}"
-                            resp = cli.request(cmd_put(key, val))
-                            if is_ok(resp):
-                                st.put_ok += 1
-                            else:
-                                st.put_fail += 1
-                                txn_ok = False
-                                break
-
-                # COMMIT / ROLLBACK
-                if txn_ok and rng.random() >= ROLLBACK_RATIO:
-                    resp = cli.request(cmd_commit())
-                    if is_ok(resp):
-                        st.commit_ok += 1
-                        st.txn_success += 1
-                    else:
-                        st.commit_fail += 1
-                        st.txn_fail += 1
-                else:
-                    # 如果中途失败或命中回滚比例，都尝试 rollback
-                    resp = cli.request(cmd_rollback())
-                    if is_ok(resp):
+                # GET 当前值
+                r = cli.request(cmd_get(key))
+                cur = parse_int_from_resp(r)
+                if cur is None:
+                    st.get_fail += 1
+                    # 事务失败，回滚
+                    rr = cli.request(cmd_rollback())
+                    if is_ok(rr):
                         st.rollback_ok += 1
                     else:
                         st.rollback_fail += 1
-                    # 回滚不算成功事务
                     st.txn_fail += 1
+                    st.abort_count += 1
+                    st.lat_ms.append((time.perf_counter() - t0) * 1000.0)
+                    continue
+                else:
+                    st.get_ok += 1
+
+                # PUT +1
+                nxt = cur + 1
+                r = cli.request(cmd_put(key, str(nxt)))
+                if is_ok(r):
+                    st.put_ok += 1
+                else:
+                    st.put_fail += 1
+                    rr = cli.request(cmd_rollback())
+                    if is_ok(rr):
+                        st.rollback_ok += 1
+                    else:
+                        st.rollback_fail += 1
+                    st.txn_fail += 1
+                    st.abort_count += 1
+                    st.lat_ms.append((time.perf_counter() - t0) * 1000.0)
+                    continue
+
+                # COMMIT
+                r = cli.request(cmd_commit())
+                if is_ok(r):
+                    st.commit_ok += 1
+                    st.txn_success += 1
+                    st.applied_increments[key] += 1
+                    txn_ok = True
+                else:
+                    st.commit_fail += 1
+                    st.txn_fail += 1
+                    st.abort_count += 1
 
             except Exception:
                 st.exceptions += 1
                 st.txn_fail += 1
-                # 尝试把会话状态拉回一致
                 try:
-                    cli.request(cmd_rollback())
-                    st.rollback_ok += 1
+                    rr = cli.request(cmd_rollback())
+                    if is_ok(rr):
+                        st.rollback_ok += 1
+                    else:
+                        st.rollback_fail += 1
                 except Exception:
                     st.rollback_fail += 1
 
-            st.latency_ms.append((time.perf_counter() - t0) * 1000.0)
+            finally:
+                st.lat_ms.append((time.perf_counter() - t0) * 1000.0)
+
+                # 可选：失败重试统计（这里不自动重试，只计数）
+                if not txn_ok:
+                    st.retry_count += 1
 
     finally:
         cli.close()
@@ -259,18 +328,56 @@ def worker(tid: int, gstats: Stats, lock: threading.Lock):
             gstats.merge(st)
 
 
-def main():
-    print(f"[INFO] target={HOST}:{PORT}")
-    print(f"[INFO] threads={THREADS}, txn/thread={TXN_PER_THREAD}, ops/txn={OPS_PER_TXN}")
-    print(f"[INFO] read_ratio={READ_RATIO}, rollback_ratio={ROLLBACK_RATIO}")
+# =========================
+# 最终一致性校验
+# =========================
+def verify_final_values(keys, expected_map, init_val=0):
+    """
+    读取每个 key 的最终值，与 init_val + expected_increments 对比
+    """
+    cli = SessionClient(HOST, PORT)
+    mismatches = []
+    unreadable = []
+    try:
+        cli.connect()
+        for k in keys:
+            r = cli.request(cmd_get(k))
+            v = parse_int_from_resp(r)
+            if v is None:
+                unreadable.append((k, r.strip()))
+                continue
 
+            expect = init_val + expected_map.get(k, 0)
+            if v != expect:
+                mismatches.append((k, expect, v))
+    finally:
+        cli.close()
+
+    return mismatches, unreadable
+
+
+def main():
+    print("[INFO] target={}:{}".format(HOST, PORT))
+    print("[INFO] threads={}, txn/thread={}".format(THREADS, TXN_PER_THREAD))
+    print("[INFO] hot_keys={}".format(HOT_KEYS))
+
+    keys = ["{}{}".format(KEY_PREFIX, i) for i in range(HOT_KEYS)]
+    init_val = 0
+
+    # 1) 预加载
+    t_pre0 = time.perf_counter()
+    preload_keys(keys, init_val=init_val)
+    t_pre1 = time.perf_counter()
+    print("[INFO] preload done: {} keys, {:.3f}s".format(len(keys), t_pre1 - t_pre0))
+
+    # 2) 并发执行
     gstats = Stats()
     lock = threading.Lock()
     threads = []
 
     t0 = time.perf_counter()
     for tid in range(THREADS):
-        th = threading.Thread(target=worker, args=(tid, gstats, lock), daemon=True)
+        th = threading.Thread(target=worker, args=(tid, keys, gstats, lock))
         threads.append(th)
         th.start()
 
@@ -282,28 +389,52 @@ def main():
     elapsed = t1 - t0
     tps = total_txn / elapsed if elapsed > 0 else 0.0
 
-    p50 = percentile(gstats.latency_ms, 0.50)
-    p95 = percentile(gstats.latency_ms, 0.95)
-    p99 = percentile(gstats.latency_ms, 0.99)
+    p50 = percentile(gstats.lat_ms, 0.50)
+    p95 = percentile(gstats.lat_ms, 0.95)
+    p99 = percentile(gstats.lat_ms, 0.99)
 
     print("\n===== RESULT =====")
-    print(f"total_txn         : {total_txn}")
-    print(f"elapsed_sec       : {elapsed:.3f}")
-    print(f"TPS               : {tps:.1f}")
+    print("total_txn         : {}".format(total_txn))
+    print("elapsed_sec       : {:.3f}".format(elapsed))
+    print("TPS               : {:.1f}".format(tps))
+    print("start_ok/fail     : {}/{}".format(gstats.start_ok, gstats.start_fail))
+    print("get_ok/fail       : {}/{}".format(gstats.get_ok, gstats.get_fail))
+    print("put_ok/fail       : {}/{}".format(gstats.put_ok, gstats.put_fail))
+    print("commit_ok/fail    : {}/{}".format(gstats.commit_ok, gstats.commit_fail))
+    print("rollback_ok/fail  : {}/{}".format(gstats.rollback_ok, gstats.rollback_fail))
+    print("txn_success/fail  : {}/{}".format(gstats.txn_success, gstats.txn_fail))
+    print("conn_fail         : {}".format(gstats.conn_fail))
+    print("exceptions        : {}".format(gstats.exceptions))
+    print("retry_count       : {}".format(gstats.retry_count))
+    print("abort_count       : {}".format(gstats.abort_count))
+    print("txn_latency_p50ms : {:.3f}".format(p50))
+    print("txn_latency_p95ms : {:.3f}".format(p95))
+    print("txn_latency_p99ms : {:.3f}".format(p99))
 
-    print(f"start_ok/fail     : {gstats.start_ok}/{gstats.start_fail}")
-    print(f"put_ok/fail       : {gstats.put_ok}/{gstats.put_fail}")
-    print(f"get_ok/not/fail   : {gstats.get_ok}/{gstats.get_not_found}/{gstats.get_fail}")
-    print(f"commit_ok/fail    : {gstats.commit_ok}/{gstats.commit_fail}")
-    print(f"rollback_ok/fail  : {gstats.rollback_ok}/{gstats.rollback_fail}")
+    # 3) 一致性校验（检查丢失更新）
+    mismatches, unreadable = verify_final_values(keys, gstats.applied_increments, init_val=init_val)
 
-    print(f"txn_success/fail  : {gstats.txn_success}/{gstats.txn_fail}")
-    print(f"conn_fail         : {gstats.conn_fail}")
-    print(f"exceptions        : {gstats.exceptions}")
+    print("\n===== VERIFY =====")
+    expected_total_inc = sum(gstats.applied_increments.values())
+    print("expected_total_inc: {}".format(expected_total_inc))
 
-    print(f"txn_latency_p50ms : {p50:.3f}")
-    print(f"txn_latency_p95ms : {p95:.3f}")
-    print(f"txn_latency_p99ms : {p99:.3f}")
+    if unreadable:
+        print("[WARN] unreadable keys: {}".format(len(unreadable)))
+        for x in unreadable[:10]:
+            print("  key={} resp={}".format(x[0], x[1]))
+
+    if mismatches:
+        print("[FAIL] mismatch keys: {}".format(len(mismatches)))
+        for k, e, a in mismatches[:20]:
+            print("  key={} expect={} actual={}".format(k, e, a))
+    else:
+        print("[PASS] final value check passed (no lost-update observed on sampled keys)")
+
+    # 额外总结
+    hard_fail = gstats.conn_fail + gstats.exceptions
+    if hard_fail > 0:
+        print("[WARN] hard failures detected: {}".format(hard_fail))
+
 
 if __name__ == "__main__":
     main()
