@@ -52,11 +52,6 @@ namespace storage
 		uint64_t lock_txn_id;
 	private:
 
-		// per row validation similar to Hekaton.
-		RC per_row_validate(txn_man * txn);
-
-		// parallel validation in the original OCC paper.
-		RC central_validate(txn_man * txn);
 		bool test_valid(set_ent * set1, set_ent * set2);
 		RC get_rw_set(txn_man * txni, set_ent * &rset, set_ent *& wset);
 

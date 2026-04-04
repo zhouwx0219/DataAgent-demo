@@ -26,18 +26,8 @@ namespace storage
 		pthread_mutex_init(&latch, NULL);
 	}
 
-	RC OptCC::validate(txn_man * txn) {
-		RC rc;
-#if PER_ROW_VALID
-		rc = per_row_validate(txn);
-#else
-		rc = central_validate(txn);
-#endif
-		return rc;
-	}
-
 	RC
-	OptCC::per_row_validate(txn_man * txn) {
+	OptCC::validate(txn_man * txn) {
 		RC rc = RCOK;
 		for (int i = txn->row_cnt - 1; i > 0; i--) {
 			for (int j = 0; j < i; j ++) {
@@ -50,20 +40,13 @@ namespace storage
 				}
 			}
 		}
-#if DEBUG_ASSERT
-		for (int i = txn->row_cnt - 1; i > 0; i--) {
-			int tabcmp = strcmp(txn->accesses[i-1]->orig_row->get_table_name(),
-			txn->accesses[i]->orig_row->get_table_name());
-			assert(tabcmp < 0 || tabcmp == 0 && txn->accesses[i]->orig_row->get_primary_key() >
-			txn->accesses[i-1]->orig_row->get_primary_key());
-		}
-#endif
+
 		// lock all rows in the readset and writeset.
 		// Validate each access
 		bool ok = true;
-		int lock_cnt = 0;
+		txn->lock_cnt = 0;
 		for (int i = 0; i < txn->row_cnt && ok; i++) {
-			lock_cnt ++;
+			txn->lock_cnt ++;
 			txn->accesses[i]->orig_row->manager->latch();
 			ok = txn->accesses[i]->orig_row->manager->validate( txn->start_ts );
 		}
@@ -79,115 +62,9 @@ namespace storage
 			rc = Abort;
 		}
 
-		for (int i = 0; i < lock_cnt; i++)
+		for (int i = 0; i < txn->lock_cnt; i++)
 			txn->accesses[i]->orig_row->manager->release();
 
-		return rc;
-	}
-
-	RC OptCC::central_validate(txn_man * txn) {
-		RC rc;
-		uint64_t start_tn = txn->start_ts;
-		uint64_t finish_tn;
-		set_ent ** finish_active;
-		uint64_t f_active_len;
-		bool valid = true;
-
-		set_ent * wset;
-		set_ent * rset;
-		get_rw_set(txn, rset, wset);
-		bool readonly = (wset->set_size == 0);
-		set_ent * his;
-		set_ent * ent;
-		int n = 0;
-
-		pthread_mutex_lock( &latch );
-		finish_tn = tnc;
-		ent = active;
-		f_active_len = active_len;
-		finish_active = (set_ent**) mem_allocator.alloc(sizeof(set_ent *) * f_active_len, 0);
-		while (ent != NULL) {
-			finish_active[n++] = ent;
-			ent = ent->next;
-		}
-		if ( !readonly ) {
-			active_len ++;
-			STACK_PUSH(active, wset);
-		}
-		his = history;
-		pthread_mutex_unlock( &latch );
-		if (finish_tn > start_tn) {
-			while (his && his->tn > finish_tn)
-				his = his->next;
-			while (his && his->tn > start_tn) {
-				valid = test_valid(his, rset);
-				if (!valid)
-					goto final;
-				his = his->next;
-			}
-		}
-
-		for (UInt32 i = 0; i < f_active_len; i++) {
-			set_ent * wact = finish_active[i];
-			valid = test_valid(wact, rset);
-			if (valid) {
-				valid = test_valid(wact, wset);
-			} if (!valid)
-				goto final;
-		}
-		final:
-			if (valid)
-				txn->cleanup(RCOK);
-
-		if (f_active_len > 0)
-			mem_allocator.free(finish_active, sizeof(set_ent *) * f_active_len);
-
-		if (rset) {
-			if (rset->rows && rset->set_size > 0)
-				mem_allocator.free(rset->rows, sizeof(row_t *) * rset->set_size);
-			mem_allocator.free(rset, sizeof(set_ent));
-		}
-
-		if (!readonly) {
-			pthread_mutex_lock(&latch);
-			set_ent * act = active;
-			set_ent * prev = NULL;
-			while (act && act->txn != txn) {
-				prev = act;
-				act = act->next;
-			}
-			assert(act && act->txn == txn);
-			if (prev) prev->next = act->next;
-			else active = act->next;
-			active_len--;
-
-			if (valid) {
-				if (history) assert(history->tn == tnc);
-				tnc++;
-				wset->tn = tnc;
-				STACK_PUSH(history, wset);
-				his_len++;
-			}
-			pthread_mutex_unlock(&latch);
-
-			if (!valid) {
-				if (wset->rows && wset->set_size > 0)
-					mem_allocator.free(wset->rows, sizeof(row_t *) * wset->set_size);
-				mem_allocator.free(wset, sizeof(set_ent));
-			}
-		} else {
-			if (wset) {
-				if (wset->rows && wset->set_size > 0)
-					mem_allocator.free(wset->rows, sizeof(row_t *) * wset->set_size);
-				mem_allocator.free(wset, sizeof(set_ent));
-			}
-		}
-
-		if (valid) rc = RCOK;
-		else {
-			txn->cleanup(Abort);
-			rc = Abort;
-		}
 		return rc;
 	}
 

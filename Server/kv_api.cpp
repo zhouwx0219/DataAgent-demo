@@ -9,6 +9,8 @@
 #include <string>
 #include <cstring> // 引入 strncpy, strcmp
 
+#include "manager.h"
+#include "occ.h"
 #include "System/thread.h"
 #include "System/global.h"
 #include "System/mem_alloc.h"
@@ -42,6 +44,10 @@ bool init_engine() {
     std::cout << "[Engine] Initializing KV Engine..." << std::endl;
     g_wl = new storage::TestWorkload();
     g_wl->init();
+    storage::glob_manager = (storage::Manager *) _mm_malloc(sizeof(storage::Manager), 64);
+    storage::glob_manager->init();
+    storage::mem_allocator.init(storage::g_part_cnt, MEM_SIZE / storage::g_part_cnt); ;
+    storage::occ_man.init();
 
     storage::table_t* the_table = g_wl->tables["Data_TABLE"];
     storage::INDEX* the_index = g_wl->indexes["Data_INDEX"];
@@ -126,78 +132,21 @@ Rc begin_txn(TxnHandle &h) {
 Rc get(TxnHandle &h, const std::string &key, std::string &value_out) {
     if (!h.impl) return Rc::ERROR;
     TxnContext* ctx = static_cast<TxnContext*>(h.impl);
-
-    uint64_t primary_key = hash_key(key);
-    storage::INDEX* the_index = g_wl->indexes["Data_INDEX"];
-
-    storage::itemid_t* item = nullptr;
-    storage::RC rc = the_index->index_read(primary_key, item, 0, 0);
-
-    if (rc != storage::RCOK || item == nullptr) {
+    if (ctx->txn->Read(key, value_out) == storage::RCOK)
+        return Rc::OK;
+    else
         return Rc::NOT_FOUND;
-    }
 
-    storage::row_t* row = (storage::row_t*)item->location;
-
-    storage::row_t* row_local = ctx->txn->get_row(row, storage::RD);
-    if (!row_local) return Rc::ABORT;
-
-    char* read_key = row_local->get_value(0);
-    if (strcmp(read_key, key.c_str()) != 0) return Rc::NOT_FOUND;
-
-    char* read_val = row_local->get_value(1);
-    value_out = std::string(read_val);
-
-    return Rc::OK;
 }
 
 Rc put(TxnHandle &h, const std::string &key, const std::string &value) {
     if (!h.impl) return Rc::ERROR;
     TxnContext* ctx = static_cast<TxnContext*>(h.impl);
+    if ( ctx->txn->Write(key, value) == storage::RCOK)
+        return Rc::OK;
+    else
+        return Rc::ERROR;
 
-    uint64_t primary_key = hash_key(key);
-    storage::INDEX* the_index = g_wl->indexes["Data_INDEX"];
-    storage::table_t* the_table = g_wl->tables["Data_TABLE"];
-
-
-    storage::itemid_t* item = nullptr;
-    the_index->index_read(primary_key, item, 0, 0);
-
-    if (item != nullptr) {
-        storage::row_t* row = (storage::row_t*)item->location;
-        storage::row_t* row_local = ctx->txn->get_row(row, storage::WR);
-        if (!row_local) return Rc::ABORT;
-
-        char val_buf[1024] = {0};
-        strncpy(val_buf, value.c_str(), 1023);
-        row_local->set_value(1, val_buf);
-    } else {
-        storage::row_t* new_row = nullptr;
-        uint64_t row_id;
-        storage::RC rc = the_table->get_new_row(new_row, 0, row_id);
-        if (rc != storage::RCOK) return Rc::ABORT;
-
-        char key_buf[128] = {0};
-        char val_buf[1024] = {0};
-        strncpy(key_buf, key.c_str(), 127);
-        strncpy(val_buf, value.c_str(), 1023);
-
-        new_row->set_primary_key(primary_key);
-        new_row->set_value(0, key_buf);
-        new_row->set_value(1, val_buf);
-
-        storage::itemid_t* m_item = (storage::itemid_t*) storage::mem_allocator.alloc(sizeof(storage::itemid_t), 0);
-        m_item->type = storage::DT_row;
-        m_item->location = new_row;
-        m_item->valid = true;
-
-        rc = the_index->index_insert(primary_key, m_item, 0);
-        if (rc != storage::RCOK) return Rc::ABORT;
-
-        ctx->txn->insert_row(new_row, the_table);
-    }
-
-    return Rc::OK;
 }
 
 Rc commit(TxnHandle &h) {
@@ -205,7 +154,6 @@ Rc commit(TxnHandle &h) {
     TxnContext* ctx = static_cast<TxnContext*>(h.impl);
 
     storage::RC rc = ctx->txn->finish(storage::RCOK);
-
 
     delete ctx->thd;
     delete ctx;

@@ -56,9 +56,7 @@ namespace storage
     // Global Data Structure
     /******************************************/
     extern mem_alloc mem_allocator;
-    extern Stats stats;
     extern Manager * glob_manager;
-    extern Query_queue * query_queue;
     extern Plock part_lock_man;
     extern OptCC occ_man;
 

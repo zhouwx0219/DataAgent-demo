@@ -3,6 +3,9 @@
 //
 
 #include "txn.h"
+#include <cstring>
+#include <cassert>
+
 #include "DataFormat/row.h"
 #include "thread.h"
 #include "mem_alloc.h"
@@ -12,122 +15,217 @@
 
 namespace storage
 {
-	void txn_man::init(thread_t * h_thd, workload * h_wl, uint64_t thd_id) {
-		this->h_thd = h_thd;
-		this->h_wl = h_wl;
-		pthread_mutex_init(&txn_lock, NULL);
-		row_cnt = 0;
-		wr_cnt = 0;
-		insert_cnt = 0;
-		accesses = (Access **) _mm_malloc(sizeof(Access *) * MAX_ROW_PER_TXN, 64);
-		for (int i = 0; i < MAX_ROW_PER_TXN; i++)
-			accesses[i] = NULL;
-		num_accesses_alloc = 0;
-	}
 
-	void txn_man::set_txn_id(txnid_t txn_id) {
-		this->txn_id = txn_id;
-	}
+std::hash<std::string> txn_man::hasher;
 
-	txnid_t txn_man::get_txn_id() {
-		return this->txn_id;
-	}
+void txn_man::init(thread_t * h_thd, workload * h_wl, uint64_t thd_id) {
+	this->h_thd = h_thd;
+	this->h_wl = h_wl;
+	pthread_mutex_init(&txn_lock, NULL);
 
-	workload * txn_man::get_wl() {
-		return h_wl;
-	}
+	row_cnt = 0;
+	wr_cnt = 0;
+	lock_cnt = 0;
+	insert_cnt = 0;
 
-	uint64_t txn_man::get_thd_id() {
-		return h_thd->get_thd_id();
-	}
+	accesses = (Access **) _mm_malloc(sizeof(Access *) * MAX_ROW_PER_TXN, 64);
+	for (int i = 0; i < MAX_ROW_PER_TXN; i++)
+		accesses[i] = NULL;
 
-	void txn_man::set_ts(ts_t timestamp) {
-		this->timestamp = timestamp;
-	}
-
-	ts_t txn_man::get_ts() {
-		return this->timestamp;
-	}
-
-	void txn_man::cleanup(RC rc) {
-		for (int rid = row_cnt - 1; rid >= 0; rid --) {
-			row_t * orig_r = accesses[rid]->orig_row;
-			access_t type = accesses[rid]->type;
-			if (type == WR && rc == Abort)
-				type = XP;
-			orig_r->return_row(type, this, accesses[rid]->data);
-		}
-
-		if (rc == Abort) {
-			for (UInt32 i = 0; i < insert_cnt; i ++) {
-				row_t * row = insert_rows[i];
-				row->free_row();
-				mem_allocator.free(row, sizeof(row));
-			}
-		}
-		row_cnt = 0;
-		wr_cnt = 0;
-		insert_cnt = 0;
-	}
-
-	row_t * txn_man::get_row(row_t * row, access_t type) {
-		uint64_t starttime = get_sys_clock();
-		RC rc = RCOK;
-		if (accesses[row_cnt] == NULL) {
-			Access * access = (Access *) _mm_malloc(sizeof(Access), 64);
-			accesses[row_cnt] = access;
-			num_accesses_alloc ++;
-		}
-
-		rc = row->get_row(type, this, accesses[ row_cnt ]->data);
-
-		if (rc == Abort) {
-			return NULL;
-		}
-		accesses[row_cnt]->type = type;
-		accesses[row_cnt]->orig_row = row;
-
-		row_cnt ++;
-		if (type == WR)
-			wr_cnt ++;
-
-		uint64_t timespan = get_sys_clock() - starttime;
-		return accesses[row_cnt - 1]->data;
-	}
-
-	void txn_man::insert_row(row_t * row, table_t * table) {
-		assert(insert_cnt < MAX_ROW_PER_TXN);
-		insert_rows[insert_cnt ++] = row;
-	}
-
-	itemid_t *
-	txn_man::index_read(INDEX * index, idx_key_t key, int part_id) {
-		uint64_t starttime = get_sys_clock();
-		itemid_t * item;
-		index->index_read(key, item, part_id, get_thd_id());
-		return item;
-	}
-
-	void
-	txn_man::index_read(INDEX * index, idx_key_t key, int part_id, itemid_t *& item) {
-		uint64_t starttime = get_sys_clock();
-		index->index_read(key, item, part_id, get_thd_id());
-	}
-
-	RC txn_man::finish(RC rc) {
-		uint64_t starttime = get_sys_clock();
-		if (rc == RCOK)
-			rc = occ_man.validate(this);
-		else
-			cleanup(rc);
-		uint64_t timespan = get_sys_clock() - starttime;
-		return rc;
-	}
-
-	void
-	txn_man::release() {
-		for (int i = 0; i < num_accesses_alloc; i++)
-			mem_allocator.free(accesses[i], 0);
-		mem_allocator.free(accesses, 0);
-	}
+	num_accesses_alloc = 0;
+	record_pos.clear();
 }
+
+void txn_man::set_txn_id(txnid_t txn_id) {
+	this->txn_id = txn_id;
+}
+
+txnid_t txn_man::get_txn_id() {
+	return this->txn_id;
+}
+
+workload * txn_man::get_wl() {
+	return h_wl;
+}
+
+uint64_t txn_man::get_thd_id() {
+	return h_thd->get_thd_id();
+}
+
+void txn_man::set_ts(ts_t timestamp) {
+	this->timestamp = timestamp;
+}
+
+ts_t txn_man::get_ts() {
+	return this->timestamp;
+}
+
+itemid_t * txn_man::index_read(INDEX * index, idx_key_t key, int part_id) {
+	itemid_t * item = nullptr;
+	index->index_read(key, item, part_id, get_thd_id());
+	return item;
+}
+
+void txn_man::index_read(INDEX * index, idx_key_t key, int part_id, itemid_t *& item) {
+	index->index_read(key, item, part_id, get_thd_id());
+}
+
+row_t * txn_man::get_row(row_t * row, access_t type) {
+	RC rc = RCOK;
+	uint64_t rid = row->get_primary_key();
+
+	auto it = record_pos.find(rid);
+	if (it != record_pos.end()) {
+		Access *acc = accesses[it->second];
+		if (acc->type == RD && type == WR) {
+			acc->type = WR;
+			wr_cnt++;
+		}
+		return acc->data;
+	}
+	if (accesses[row_cnt] == NULL) {
+		Access * access = (Access *) _mm_malloc(sizeof(Access), 64);
+		memset(access, 0, sizeof(Access));
+		accesses[row_cnt] = access;
+		num_accesses_alloc++;
+	}
+
+	Access *acc = accesses[row_cnt];
+	rc = row->get_row(type, this, acc->data);
+	if (rc == Abort) {
+		return NULL;
+	}
+
+	acc->type = type;
+	acc->orig_row = row;
+	record_pos[rid] = row_cnt;
+	row_cnt++;
+	if (type == WR) wr_cnt++;
+
+	return acc->data;
+}
+
+void txn_man::insert_row(row_t * row, table_t * table) {
+	assert(insert_cnt < MAX_ROW_PER_TXN);
+	insert_rows[insert_cnt++] = row;
+}
+
+RC txn_man::Read(const std::string &key, std::string &value_out, table_t * table) {
+	uint64_t primary_key = hash_key(key);
+
+	INDEX* the_index = h_wl->indexes["Data_INDEX"];
+	itemid_t *item = index_read(the_index, primary_key, 0);
+	if (item == NULL) {
+		return Abort;
+	}
+
+	row_t *row = (row_t *)item->location;
+	row_t *row_local = get_row(row, RD);
+	if (!row_local) return Abort;
+
+	char *read_key = row_local->get_value(0);
+	if (!read_key || strcmp(read_key, key.c_str()) != 0) {
+		return Abort;
+	}
+
+	char *read_val = row_local->get_value(1);
+	value_out = read_val ? std::string(read_val) : "";
+	return RCOK;
+}
+
+RC txn_man::Write(const std::string &key, const std::string &value, table_t * table) {
+	uint64_t primary_key = hash_key(key);
+	INDEX* the_index = h_wl->indexes["Data_INDEX"];
+	table_t* the_table = h_wl->tables["Data_TABLE"];
+
+	itemid_t *item = index_read(the_index, primary_key, 0);
+
+	if (item == NULL) {
+		row_t* new_row = nullptr;
+		uint64_t row_id = 0;
+		RC rc = the_table->get_new_row(new_row, 0, row_id);
+		if (rc != RCOK || new_row == nullptr) return Abort;
+
+		char key_buf[128] = {0};
+		char val_buf[1024] = {0};
+		strncpy(key_buf, key.c_str(), sizeof(key_buf) - 1);
+		strncpy(val_buf, value.c_str(), sizeof(val_buf) - 1);
+		new_row->set_primary_key(primary_key);
+		new_row->set_value(0, key_buf);
+		new_row->set_value(1, val_buf);
+
+		row_t* row_local = get_row(new_row, WR);
+		if (!row_local) return Abort;
+		row_local->set_value(0, key_buf);
+		row_local->set_value(1, val_buf);
+
+
+		insert_row(new_row, the_table);
+		itemid_t* m_item = (itemid_t*) mem_allocator.alloc(sizeof(itemid_t), 0);
+		m_item->type = DT_row;
+		m_item->location = new_row;
+		m_item->valid = true;
+
+		rc = the_index->index_insert(primary_key, m_item, 0);
+		if (rc != RCOK) return Abort;
+
+		return RCOK;
+	}
+
+	// ---------- UPDATE ----------
+	row_t* row = (row_t*)item->location;
+	if (row == nullptr) return Abort;
+
+	row_t* row_local = get_row(row, WR);
+	if (!row_local) return Abort;
+
+	char *exist_key = row_local->get_value(0);
+	if (!exist_key || strcmp(exist_key, key.c_str()) != 0) return Abort;
+
+	char val_buf[1024] = {0};
+	strncpy(val_buf, value.c_str(), sizeof(val_buf) - 1);
+	row_local->set_value(1, val_buf);
+
+	return RCOK;
+}
+
+RC txn_man::finish(RC rc) {
+	if (rc == RCOK)
+		rc = occ_man.validate(this);
+	else
+		cleanup(rc);
+	return rc;
+}
+
+void txn_man::release() {
+	for (int i = 0; i < num_accesses_alloc; i++)
+		mem_allocator.free(accesses[i], 0);
+	mem_allocator.free(accesses, 0);
+}
+
+void txn_man::cleanup(RC rc) {
+	for (int rid = row_cnt - 1; rid >= 0; rid--) {
+		row_t * orig_r = accesses[rid]->orig_row;
+		access_t type = accesses[rid]->type;
+		if (type == WR && rc == Abort)
+			type = XP;
+		orig_r->return_row(type, this, accesses[rid]->data);
+		accesses[rid]->data = NULL;
+	}
+
+	if (rc == Abort) {
+		for (UInt32 i = 0; i < insert_cnt; i++) {
+			row_t * row = insert_rows[i];
+			assert(g_part_alloc == false);
+			row->free_row();
+			mem_allocator.free(row, sizeof(row_t)); // 修复 sizeof(row)
+		}
+	}
+
+	row_cnt = 0;
+	wr_cnt = 0;
+	insert_cnt = 0;
+	record_pos.clear();
+}
+
+} // namespace storage

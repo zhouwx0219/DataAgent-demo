@@ -5,14 +5,17 @@
 #ifndef TXN_H
 #define TXN_H
 
+#include <unordered_map>
+
 #include "global.h"
 #include "helper.h"
+#include "wl.h"
+#include "table.h"
+
 namespace storage
 {
-	class workload;
 	class thread_t;
 	class row_t;
-	class table_t;
 	class base_query;
 	class INDEX;
 
@@ -27,6 +30,17 @@ namespace storage
 		row_t * 	data;
 		row_t * 	orig_data;
 		void cleanup();
+	};
+
+	enum class op_t {
+		Update_OP,      // 可更新已存在key（你也可以定义为upsert）
+		INSERT_OP    // 仅新key允许
+	};
+	struct write_t {
+		op_t type;
+		std::string key_str;   // 原始key字符串（用于防hash冲突复核）
+		std::string val_str;
+		row_t * wr_local;
 	};
 
 	class txn_man
@@ -52,6 +66,7 @@ namespace storage
 		row_t * volatile cur_row;
 
 		RC 				finish(RC rc);
+		void			applywrite();
 		void 			cleanup(RC rc);
 
 		// For OCC
@@ -60,6 +75,7 @@ namespace storage
 		// following are public for OCC
 		int 			row_cnt;
 		int	 			wr_cnt;
+		int				lock_cnt;
 		Access **		accesses;
 		int 			num_accesses_alloc;
 
@@ -67,6 +83,17 @@ namespace storage
 		void 			index_read(INDEX * index, idx_key_t key, int part_id, itemid_t *& item);
 		row_t * 		get_row(row_t * row, access_t type);
 		void 			insert_row(row_t * row, table_t * table);
+
+		static  uint64_t hash_key(const std::string &key) {
+			return hasher(key);
+		}
+
+		///todo： change type string value to row_t value;
+		RC  			Read(const std::string &key, std::string &value_out, table_t * table = nullptr);
+		RC				Write(const std::string &key, const std::string &value, table_t * table = nullptr);
+
+		unordered_map<uint64_t, uint64_t> record_pos; // hash_key -> latest write
+
 
 	private:
 		// insert rows
@@ -76,6 +103,8 @@ namespace storage
 		ts_t 			timestamp;
 
 		bool _write_copy_ptr;
+
+		static std::hash<std::string> hasher;
 
 	};
 }

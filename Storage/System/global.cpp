@@ -4,14 +4,11 @@
 
 #include "global.h"
 #include "mem_alloc.h"
-#include "manager.h"
 #include "occ.h"
 namespace storage
 {
     mem_alloc mem_allocator;
-    Stats stats;
     Manager * glob_manager;
-    Query_queue * query_queue;
     OptCC occ_man;
 
     bool volatile warmup_finish = false;
