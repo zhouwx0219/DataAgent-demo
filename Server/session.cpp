@@ -93,7 +93,6 @@ namespace server
                     send_all(client_fd, "ERR USAGE PUT <key> <value>\n");
                     continue;
                 }
-                // value 允许带空格：从原 line 切
                 auto pos1 = line.find(' ');
                 auto pos2 = (pos1 == std::string::npos) ? std::string::npos : line.find(' ', pos1 + 1);
                 std::string key = parts[1];

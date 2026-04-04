@@ -22,8 +22,9 @@ namespace storage
 		RC rc = RCOK;
 		pthread_mutex_lock( _latch );
 		if (type == R_REQ) {
-			if (txn->start_ts < wts)
+			if (txn->start_ts < wts) {
 				rc = Abort;
+			}
 			else {
 				txn->cur_row->copy(_row);
 				rc = RCOK;

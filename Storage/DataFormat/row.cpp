@@ -127,7 +127,10 @@ namespace storage
 	void row_t::return_row(access_t type, txn_man * txn, row_t * row) {
 		assert (row != NULL);
 		if (type == WR)
+		{
 			manager->write( row, txn->end_ts );
+		}
+
 		row->free_row();
 		mem_allocator.free(row, sizeof(row_t));
 	}

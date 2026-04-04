@@ -123,6 +123,7 @@ Rc begin_txn(TxnHandle &h) {
     ctx->thd->init(0, g_wl);
 
     g_wl->get_txn_man(ctx->txn, ctx->thd);
+    ctx->txn->start_ts = storage::glob_manager->get_ts(ctx->txn->get_thd_id());
 
     h.id = g_txn_id.fetch_add(1);
     h.impl = ctx;

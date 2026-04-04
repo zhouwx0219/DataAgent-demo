@@ -30,7 +30,6 @@ namespace storage
 		uint64_t time;
 		uint64_t starttime = get_sys_clock();
 		time = ATOM_FETCH_ADD((*timestamp), 1);
-		// time = get_sys_clock() * g_thread_cnt + thread_id;
 		return time;
 	}
 

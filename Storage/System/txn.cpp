@@ -73,7 +73,6 @@ void txn_man::index_read(INDEX * index, idx_key_t key, int part_id, itemid_t *& 
 row_t * txn_man::get_row(row_t * row, access_t type) {
 	RC rc = RCOK;
 	uint64_t rid = row->get_primary_key();
-
 	auto it = record_pos.find(rid);
 	if (it != record_pos.end()) {
 		Access *acc = accesses[it->second];
@@ -115,6 +114,7 @@ RC txn_man::Read(const std::string &key, std::string &value_out, table_t * table
 
 	INDEX* the_index = h_wl->indexes["Data_INDEX"];
 	itemid_t *item = index_read(the_index, primary_key, 0);
+
 	if (item == NULL) {
 		return Abort;
 	}
