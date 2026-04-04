@@ -143,12 +143,52 @@ RC txn_man::Write(const std::string &key, const std::string &value, table_t * ta
 
 	itemid_t *item = index_read(the_index, primary_key, 0);
 
-	//key functions: the_table->get_new_row()
-	// row->set_primary_key()
-	// row->set_value()
-	// the_index->index_insert()
-	/// todo: record the write: update or insert
-	assert(false);
+	if (item == NULL) {
+		row_t* new_row = nullptr;
+		uint64_t row_id = 0;
+		RC rc = the_table->get_new_row(new_row, 0, row_id);
+		if (rc != RCOK || new_row == nullptr) return Abort;
+
+		char key_buf[128] = {0};
+		char val_buf[1024] = {0};
+		strncpy(key_buf, key.c_str(), sizeof(key_buf) - 1);
+		strncpy(val_buf, value.c_str(), sizeof(val_buf) - 1);
+		new_row->set_primary_key(primary_key);
+		new_row->set_value(0, key_buf);
+		new_row->set_value(1, val_buf);
+
+		row_t* row_local = get_row(new_row, WR);
+		if (!row_local) return Abort;
+		row_local->set_value(0, key_buf);
+		row_local->set_value(1, val_buf);
+
+
+		insert_row(new_row, the_table);
+		itemid_t* m_item = (itemid_t*) mem_allocator.alloc(sizeof(itemid_t), 0);
+		m_item->type = DT_row;
+		m_item->location = new_row;
+		m_item->valid = true;
+
+		rc = the_index->index_insert(primary_key, m_item, 0);
+		if (rc != RCOK) return Abort;
+
+		return RCOK;
+	}
+
+	// ---------- UPDATE ----------
+	row_t* row = (row_t*)item->location;
+	if (row == nullptr) return Abort;
+
+	row_t* row_local = get_row(row, WR);
+	if (!row_local) return Abort;
+
+	char *exist_key = row_local->get_value(0);
+	if (!exist_key || strcmp(exist_key, key.c_str()) != 0) return Abort;
+
+	char val_buf[1024] = {0};
+	strncpy(val_buf, value.c_str(), sizeof(val_buf) - 1);
+	row_local->set_value(1, val_buf);
+
 	return RCOK;
 }
 

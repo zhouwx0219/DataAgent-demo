@@ -29,13 +29,27 @@ namespace storage
 	RC
 	OptCC::validate(txn_man * txn) {
 		RC rc = RCOK;
-		bool ok = true;
-		///key functions
-		///Row_occ->latch(), validate
-		// todo: lock all rows in the readset and writeset.
-		// todo: Validate each access
-		assert(false);
+		for (int i = txn->row_cnt - 1; i > 0; i--) {
+			for (int j = 0; j < i; j ++) {
+				int tabcmp = strcmp(txn->accesses[j]->orig_row->get_table_name(),
+				txn->accesses[j+1]->orig_row->get_table_name());
+				if (tabcmp > 0 || (tabcmp == 0 && txn->accesses[j]->orig_row->get_primary_key() > txn->accesses[j+1]->orig_row->get_primary_key())) {
+					Access * tmp = txn->accesses[j];
+					txn->accesses[j] = txn->accesses[j+1];
+					txn->accesses[j+1] = tmp;
+				}
+			}
+		}
 
+		// lock all rows in the readset and writeset.
+		// Validate each access
+		bool ok = true;
+		txn->lock_cnt = 0;
+		for (int i = 0; i < txn->row_cnt && ok; i++) {
+			txn->lock_cnt ++;
+			txn->accesses[i]->orig_row->manager->latch();
+			ok = txn->accesses[i]->orig_row->manager->validate( txn->start_ts );
+		}
 		if (ok) {
 			// Validation passed.
 			// advance the global timestamp and get the end_ts

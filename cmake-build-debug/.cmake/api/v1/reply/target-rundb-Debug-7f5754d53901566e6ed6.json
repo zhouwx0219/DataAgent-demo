@@ -169,8 +169,7 @@
 				17,
 				18,
 				19,
-				20,
-				21
+				20
 			]
 		}
 	],
@@ -233,8 +232,7 @@
 				17,
 				18,
 				19,
-				20,
-				21
+				20
 			]
 		}
 	],
@@ -262,12 +260,6 @@
 			"backtrace" : 1,
 			"compileGroupIndex" : 0,
 			"path" : "Storage/DataFormat/catalog.cpp",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "Storage/DataFormat/index_btree.cpp",
 			"sourceGroupIndex" : 0
 		},
 		{

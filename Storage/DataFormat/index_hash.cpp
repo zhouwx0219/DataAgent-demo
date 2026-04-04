@@ -1,4 +1,4 @@
-#include "global.h"	
+#include "global.h"
 #include "index_hash.h"
 #include "mem_alloc.h"
 #include "table.h"
@@ -152,7 +152,6 @@ namespace storage
 			cur_node = cur_node->next;
 		}
 
-		// [修改这里] 不要 Assert，找不到就返回 NULL
 		if (cur_node == NULL || cur_node->key != key) {
 			item = NULL;
 			return;
